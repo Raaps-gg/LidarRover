@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ROS 2 generated files
+build/
+install/
+log/
+
+# ROS bags / recorded data
+*.bag
+*.db3
+*.mcap
+
+# Maps and large generated data
+*.pgm
+*.pbstream
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Secrets / environment
+.env
+*.key
+*.pem
+
+# SSH
+.ssh/
+
+# Temporary files
+*.tmp
+*.bak
