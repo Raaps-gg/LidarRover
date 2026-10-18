@@ -34,3 +34,22 @@ log/
 # Temporary files
 *.tmp
 *.bak
+
+# ROS 2
+**/build/
+**/install/
+**/log/
+
+# Python environments
+**/venv/
+**/.venv/
+**/yolo-env/
+**/__pycache__/
+**/*.pyc
+
+# ROS runtime data
+**/.ros/
+
+# Local files
+*.swp
+*.tmp

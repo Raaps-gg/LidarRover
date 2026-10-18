@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Rover Teleop & Navigation Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/roslibjs/1.4.1/roslib.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      margin: 0;
+      padding: 12px;
+      background-color: #12131a;
+      color: #e6e6eb;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Top Global Header */
+    header {
+      width: 100%;
+      max-width: 1100px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 1.25rem; margin: 0; color: #ffffff; }
+    .status-badge {
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: #374151;
+      color: #9ca3af;
+    }
+    .status-badge.connected { background: #065f46; color: #34d399; }
+    .status-badge.error { background: #7f1d1d; color: #f87171; }
+
+    /* Two-Column Responsive Layout */
+    .dashboard-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      width: 100%;
+      max-width: 1100px;
+    }
+    @media (min-width: 900px) {
+      .dashboard-grid {
+        flex-direction: row;
+        align-items: flex-start;
+      }
+      .col-left { flex: 1.05; max-width: 520px; }
+      .col-right { flex: 1.15; }
+    }
+    .col-left, .col-right {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Map Display and Toolbar */
+    #map-wrapper {
+      position: relative;
+      width: 100%;
+      height: 270px;
+      background-color: #0b0c10;
+      border: 1px solid #2d303e;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    #map-canvas { width: 100%; height: 100%; display: block; }
+    #map-canvas.setting-goal { cursor: crosshair; }
+    .map-toolbar {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      display: flex;
+      gap: 6px;
+      z-index: 10;
+    }
+    .btn-tool {
+      background: rgba(30, 32, 44, 0.85);
+      backdrop-filter: blur(4px);
+      border: 1px solid #4b5563;
+      color: #f3f4f6;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-tool.active { background: #2563eb; border-color: #3b82f6; }
+
+    /* Mode Button */
+    .mode-container { width: 100%; margin-bottom: 12px; }
+    .btn-mode {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #3b3e54;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: #1e202c;
+      color: #f3f4f6;
+    }
+    .btn-mode .indicator { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; }
+    .mode-manual { background-color: #d97706; color: #ffffff; }
+    .mode-nav2 { background-color: #2563eb; color: #ffffff; }
+
+    /* Joystick Controls */
+    #joystick-container {
+      position: relative;
+      width: 170px;
+      height: 170px;
+      background: radial-gradient(circle, #252839 0%, #171824 70%);
+      border: 2px dashed #35384d;
+      border-radius: 50%;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      cursor: pointer;
+    }
+    #joystick-handle {
+      width: 60px;
+      height: 60px;
+      background-color: #38bdf8;
+      border-radius: 50%;
+      box-shadow: 0 4px 12px rgba(56, 189, 248, 0.45);
+      position: absolute;
+      transform: translate(0px, 0px);
+      pointer-events: none;
+    }
+
+    /* Common Card Styles */
+    .telemetry-card {
+      width: 100%;
+      background: #1e202c;
+      border: 1px solid #2d303e;
+      border-radius: 12px;
+      padding: 8px 16px;
+      display: flex;
+      justify-content: space-around;
+      margin-bottom: 10px;
+    }
+    .metric { display: flex; flex-direction: column; align-items: center; }
+    .metric-label { font-size: 0.7rem; color: #9ca3af; margin-bottom: 2px; }
+    .metric-value { font-size: 1.1rem; font-weight: 700; font-family: monospace; color: #38bdf8; }
+
+    .controls { width: 100%; display: flex; margin-bottom: 6px; }
+    button.btn-estop {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      background-color: #ef4444;
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+    }
+    button.btn-estop:active { transform: scale(0.98); }
+
+    /* Right Column: htop Terminal Window */
+    .htop-container {
+      width: 100%;
+      background-color: #0c0d14;
+      border: 1px solid #262938;
+      border-radius: 12px;
+      font-family: "DejaVu Sans Mono", "Courier New", monospace;
+      padding: 10px 12px;
+      color: #d1d5db;
+      font-size: 0.75rem;
+      margin-bottom: 10px;
+    }
+    .htop-meters {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 14px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #1f2230;
+      padding-bottom: 10px;
+    }
+    .meter-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+    }
+    .meter-label { width: 32px; color: #38bdf8; font-weight: bold; }
+    .meter-bar-wrapper {
+      flex: 1;
+      height: 9px;
+      background: #1a1c26;
+      border-radius: 2px;
+      overflow: hidden;
+      border: 1px solid #2e3244;
+    }
+    .meter-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #10b981 0%, #38bdf8 60%, #ef4444 100%);
+      transition: width 0.3s ease;
+    }
+    .meter-val { width: 44px; text-align: right; color: #9ca3af; font-size: 0.68rem; }
+
+    .htop-meta {
+      grid-column: span 2;
+      display: flex;
+      justify-content: space-between;
+      color: #6ee7b7;
+      font-size: 0.7rem;
+      padding-top: 2px;
+    }
+
+    /* Tab Headers */
+    .htop-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .tab-btn {
+      background: #1e202c;
+      border: 1px solid #35384d;
+      color: #9ca3af;
+      padding: 4px 10px;
+      font-family: inherit;
+      font-size: 0.72rem;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #38bdf8;
+    }
+
+    /* Process Table */
+    .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+      max-height: 230px;
+    }
+    table.htop-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.7rem;
+    }
+    table.htop-table th {
+      background: #10b981;
+      color: #000000;
+      padding: 3px 6px;
+      font-weight: bold;
+    }
+    table.htop-table td {
+      padding: 3px 6px;
+      border-bottom: 1px solid #161824;
+      white-space: nowrap;
+    }
+    table.htop-table tr:hover { background: #1a1c29; }
+    .cmd-col { color: #38bdf8; font-weight: 500; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Rover Teleop & Navigation</h1>
+    <div id="status" class="status-badge">Connecting...</div>
+  </header>
+
+  <div class="dashboard-grid">
+    <!-- LEFT COLUMN: Map, Mode, & Driving Joystick -->
+    <div class="col-left">
+      <!-- 1. Interactive Map -->
+      <div id="map-wrapper">
+        <div class="map-toolbar">
+          <button id="btn-toggle-layer" class="btn-tool" onclick="toggleMapLayer()">
+            Layer: <span id="layer-label">SLAM</span>
+          </button>
+          <button id="btn-nav-goal" class="btn-tool" onclick="toggleGoalMode()">
+            📍 Set Goal
+          </button>
+          <!-- toggle -->
+          <button id="btn-explore" class="btn-tool" onclick="toggleExplore()">
+            🧭 Explore: OFF
+          </button>
+        </div>
+        <canvas id="map-canvas"></canvas>
+      </div>
+
+      <!-- 2. Mode Toggle Button -->
+      <div class="mode-container">
+        <button class="btn-mode" onclick="toggleMode()">
+          <span>Control Mode (Simulate 'X')</span>
+          <span id="mode-badge" class="indicator mode-manual">MANUAL</span>
+        </button>
+      </div>
+
+      <!-- 3. Virtual Joystick -->
+      <div id="joystick-container">
+        <div id="joystick-handle"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: System Health, Velocity Metrics, & E-STOP -->
+    <div class="col-right">
+      <!-- 1. System Summary Card -->
+      <div class="telemetry-card">
+        <div class="metric">
+          <span class="metric-label">CPU Total</span>
+          <span id="val-cpu" class="metric-value">--%</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">RAM Usage</span>
+          <span id="val-ram" class="metric-value">--%</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">SoC Temp</span>
+          <span id="val-temp" class="metric-value">--°C</span>
+        </div>
+      </div>
+
+      <!-- 2. Live htop Terminal Widget -->
+      <div class="htop-container">
+        <div class="htop-meters">
+          <!-- CPU 0 -->
+          <div class="meter-row">
+            <span class="meter-label">0[</span>
+            <div class="meter-bar-wrapper"><div id="core-0-bar" class="meter-bar-fill"></div></div>
+            <span id="core-0-val" class="meter-val">0.0%</span>]
+          </div>
+          <!-- CPU 1 -->
+          <div class="meter-row">
+            <span class="meter-label">1[</span>
+            <div class="meter-bar-wrapper"><div id="core-1-bar" class="meter-bar-fill"></div></div>
+            <span id="core-1-val" class="meter-val">0.0%</span>]
+          </div>
+          <!-- CPU 2 -->
+          <div class="meter-row">
+            <span class="meter-label">2[</span>
+            <div class="meter-bar-wrapper"><div id="core-2-bar" class="meter-bar-fill"></div></div>
+            <span id="core-2-val" class="meter-val">0.0%</span>]
+          </div>
+          <!-- CPU 3 -->
+          <div class="meter-row">
+            <span class="meter-label">3[</span>
+            <div class="meter-bar-wrapper"><div id="core-3-bar" class="meter-bar-fill"></div></div>
+            <span id="core-3-val" class="meter-val">0.0%</span>]
+          </div>
+          <!-- Memory Bar -->
+          <div class="meter-row" style="grid-column: span 2;">
+            <span class="meter-label" style="width: 38px;">Mem[</span>
+            <div class="meter-bar-wrapper"><div id="mem-bar" class="meter-bar-fill"></div></div>
+            <span id="mem-val" class="meter-val" style="width: 100px;">0M/0M</span>]
+          </div>
+          <!-- Uptime & Tasks -->
+          <div class="htop-meta">
+            <span id="htop-tasks">Tasks: --</span>
+            <span id="htop-load">Load: 0.00 0.00 0.00</span>
+            <span id="htop-uptime">Uptime: 00:00:00</span>
+          </div>
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="htop-tabs">
+          <button id="tab-btn-main" class="tab-btn active" onclick="switchHtopTab('main')">Main (Threads)</button>
+          <button id="tab-btn-io" class="tab-btn" onclick="switchHtopTab('io')">Disk & Network I/O</button>
+        </div>
+
+        <!-- Table: Main (CPU/RAM Processes) -->
+        <div id="view-main" class="table-wrapper">
+          <table class="htop-table">
+            <thead>
+              <tr>
+                <th>PID</th>
+                <th>USER</th>
+                <th>CPU%</th>
+                <th>MEM%</th>
+                <th>Command</th>
+              </tr>
+            </thead>
+            <tbody id="proc-body"></tbody>
+          </table>
+        </div>
+
+        <!-- Table: I/O (Disk Read/Write) -->
+        <div id="view-io" class="table-wrapper" style="display: none;">
+          <table class="htop-table">
+            <thead>
+              <tr>
+                <th>PID</th>
+                <th>USER</th>
+                <th>READ (MB)</th>
+                <th>WRITE (MB)</th>
+                <th>Command</th>
+              </tr>
+            </thead>
+            <tbody id="io-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 3. Velocity Metrics Panel -->
+      <div class="telemetry-card">
+        <div class="metric">
+          <span class="metric-label">Linear X (m/s)</span>
+          <span id="val-linear" class="metric-value">0.00</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Angular Z (rad/s)</span>
+          <span id="val-angular" class="metric-value">0.00</span>
+        </div>
+      </div>
+
+      <!-- 4. Emergency Stop Button -->
+      <div class="controls">
+        <button class="btn-estop" onclick="emergencyStop()">E-STOP</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Tab Controller for htop
+    let activeHtopTab = 'main';
+    function switchHtopTab(tab) {
+      activeHtopTab = tab;
+      document.getElementById('tab-btn-main').classList.toggle('active', tab === 'main');
+      document.getElementById('tab-btn-io').classList.toggle('active', tab === 'io');
+      document.getElementById('view-main').style.display = tab === 'main' ? 'block' : 'none';
+      document.getElementById('view-io').style.display = tab === 'io' ? 'block' : 'none';
+    }
+
+    // ROSBridge WebSocket Connection
+    const bridgeHost = window.location.hostname || '192.168.1.198';
+    const ros = new ROSLIB.Ros({ url: `ws://${bridgeHost}:9090` });
+
+    const statusEl = document.getElementById('status');
+    const modeBadge = document.getElementById('mode-badge');
+    const linearEl = document.getElementById('val-linear');
+    const angularEl = document.getElementById('val-angular');
+    const layerLabel = document.getElementById('layer-label');
+    const btnNavGoal = document.getElementById('btn-nav-goal');
+    const canvas = document.getElementById('map-canvas');
+    const ctx = canvas.getContext('2d');
+
+    // DOM Elements for Stats
+    const cpuEl = document.getElementById('val-cpu');
+    const ramEl = document.getElementById('val-ram');
+    const tempEl = document.getElementById('val-temp');
+    const procBody = document.getElementById('proc-body');
+    const ioBody = document.getElementById('io-body');
+
+    ros.on('connection', () => { statusEl.textContent = 'Connected'; statusEl.className = 'status-badge connected'; });
+    ros.on('error', () => { statusEl.textContent = 'Bridge Error'; statusEl.className = 'status-badge error'; });
+    ros.on('close', () => { statusEl.textContent = 'Disconnected'; statusEl.className = 'status-badge error'; });
+
+    // Explore-Lite ROS Topics & Controller Logic
+    let isExploring = false;
+    const btnExplore = document.getElementById('btn-explore');
+
+    const explorePub = new ROSLIB.Topic({
+      ros: ros,
+      name: '/rover/toggle_explore',
+      messageType: 'std_msgs/msg/Bool'
+    });
+
+    const exploreStatusSub = new ROSLIB.Topic({
+      ros: ros,
+      name: '/rover/explore_status',
+      messageType: 'std_msgs/msg/Bool'
+    });
+
+    exploreStatusSub.subscribe((msg) => {
+      isExploring = msg.data;
+      btnExplore.textContent = isExploring ? '🧭 Explore: ON' : '🧭 Explore: OFF';
+      btnExplore.classList.toggle('active', isExploring);
+    });
+
+    function toggleExplore() {
+      const targetState = !isExploring;
+      explorePub.publish(new ROSLIB.Message({ data: targetState }));
+    }
+
+    // 1. Teleop Publishers & Subscribers
+    const joyPub = new ROSLIB.Topic({ ros: ros, name: '/joy', messageType: 'sensor_msgs/msg/Joy' });
+    const activeCmdSub = new ROSLIB.Topic({ ros: ros, name: '/rover/active_cmd_vel', messageType: 'geometry_msgs/Twist' });
+
+    activeCmdSub.subscribe((msg) => {
+      linearEl.textContent = msg.linear.x.toFixed(2);
+      angularEl.textContent = msg.angular.z.toFixed(2);
+    });
+
+    // 2. System Stats Telemetry Subscriber
+    const statsSub = new ROSLIB.Topic({
+      ros: ros,
+      name: '/rover/system_stats',
+      messageType: 'std_msgs/msg/String'
+    });
+
+    statsSub.subscribe((msg) => {
+      try {
+        const stats = JSON.parse(msg.data);
+
+        // Header Summary
+        cpuEl.textContent = `${stats.cpu_avg.toFixed(0)}%`;
+        ramEl.textContent = `${stats.mem_percent.toFixed(0)}%`;
+        tempEl.textContent = `${stats.temp.toFixed(1)}°C`;
+        tempEl.style.color = stats.temp >= 75.0 ? '#ef4444' : (stats.temp >= 65.0 ? '#facc15' : '#38bdf8');
+
+        // CPU Core Bars
+        if (stats.cores && stats.cores.length >= 4) {
+          for (let i = 0; i < 4; i++) {
+            const bar = document.getElementById(`core-${i}-bar`);
+            const val = document.getElementById(`core-${i}-val`);
+            bar.style.width = `${Math.min(stats.cores[i], 100)}%`;
+            val.textContent = `${stats.cores[i].toFixed(1)}%`;
+          }
+        }
+
+        // Memory Bar
+        const memBar = document.getElementById('mem-bar');
+        const memVal = document.getElementById('mem-val');
+        memBar.style.width = `${Math.min(stats.mem_percent, 100)}%`;
+        memVal.textContent = `${stats.mem_used}M/${stats.mem_total}M`;
+
+        // Metadata
+        document.getElementById('htop-tasks').textContent = `Tasks: ${stats.tasks}`;
+        document.getElementById('htop-load').textContent = `Load: ${stats.load.join(' ')}`;
+        document.getElementById('htop-uptime').textContent = `Up: ${stats.uptime}`;
+
+        // Populate Main Process Table
+        let mainHtml = '';
+        (stats.procs || []).forEach(p => {
+          mainHtml += `<tr>
+            <td>${p.pid}</td>
+            <td>${p.user}</td>
+            <td style="color:#38bdf8">${p.cpu}%</td>
+            <td>${p.mem}%</td>
+            <td class="cmd-col">${p.cmd}</td>
+          </tr>`;
+        });
+        procBody.innerHTML = mainHtml;
+
+        // Populate I/O Process Table
+        let ioHtml = '';
+        (stats.io_procs || []).forEach(p => {
+          ioHtml += `<tr>
+            <td>${p.pid}</td>
+            <td>${p.user}</td>
+            <td style="color:#34d399">${p.read_mb}</td>
+            <td style="color:#f87171">${p.write_mb}</td>
+            <td class="cmd-col">${p.cmd}</td>
+          </tr>`;
+        });
+        ioBody.innerHTML = ioHtml;
+
+      } catch (err) {
+        console.error('Failed to parse system stats:', err);
+      }
+    });
+
+    // 3. Navigation Goal Publisher
+    const goalPub = new ROSLIB.Topic({
+      ros: ros,
+      name: '/goal_pose',
+      messageType: 'geometry_msgs/msg/PoseStamped'
+    });
+
+    // 4. SLAM Map Subscriber
+    let slamMapMsg = null, costmapMsg = null;
+    let slamOffscreen = null, costmapOffscreen = null;
+    let activeMapLayer = 'slam';
+    let currentPath = [];
+    let robotPose = { x: 0.0, y: 0.0, yaw: 0.0 };
+    let targetGoalPose = null;
+    let isGoalMode = false, goalDragStart = null, goalDragCurrent = null;
+    let mapRenderTransform = { scale: 1.0, offsetX: 0, offsetY: 0, width: 0, height: 0, res: 0.05, originX: 0, originY: 0 };
+
+    const slamMapSub = new ROSLIB.Topic({
+      ros: ros,
+      name: '/map',
+      messageType: 'nav_msgs/msg/OccupancyGrid',
+      compression: 'png'
+    });
+    slamMapSub.subscribe((msg) => {
+      slamMapMsg = msg;
+      slamOffscreen = prerenderOccupancyGrid(msg, false);
+      if (activeMapLayer === 'slam') renderScene();
+    });
+
+    const costmapSub = new ROSLIB.Topic({
+      ros: ros,
+      name: '/global_costmap/costmap',
+      messageType: 'nav_msgs/msg/OccupancyGrid',
+      compression: 'png'
+    });
+    costmapSub.subscribe((msg) => {
+      costmapMsg = msg;
+      costmapOffscreen = prerenderOccupancyGrid(msg, true);
+      if (activeMapLayer === 'costmap') renderScene();
+    });
+
+    const pathSub = new ROSLIB.Topic({ ros: ros, name: '/plan', messageType: 'nav_msgs/msg/Path' });
+    pathSub.subscribe((msg) => {
+      if (msg.poses) {
+        currentPath = msg.poses.map(p => ({ x: p.pose.position.x, y: p.pose.position.y }));
+        renderScene();
+      }
+    });
+
+    const odomSub = new ROSLIB.Topic({ ros: ros, name: '/odom', messageType: 'nav_msgs/msg/Odometry' });
+    odomSub.subscribe((msg) => {
+      robotPose.x = msg.pose.pose.position.x;
+      robotPose.y = msg.pose.pose.position.y;
+      const q = msg.pose.pose.orientation;
+      robotPose.yaw = Math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+      renderScene();
+    });
+
+    function prerenderOccupancyGrid(mapMsg, isCostmap) {
+      const width = mapMsg.info.width;
+      const height = mapMsg.info.height;
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = width;
+      offCanvas.height = height;
+      const offCtx = offCanvas.getContext('2d');
+      const imgData = offCtx.createImageData(width, height);
+
+      for (let i = 0; i < mapMsg.data.length; i++) {
+        const val = mapMsg.data[i];
+        const row = Math.floor(i / width);
+        const col = i % width;
+        const flippedIdx = ((height - 1 - row) * width + col) * 4;
+
+        if (val === -1 || val === 255) {
+          imgData.data[flippedIdx] = 70;
+          imgData.data[flippedIdx + 1] = 70;
+          imgData.data[flippedIdx + 2] = 80;
+          imgData.data[flippedIdx + 3] = 255;
+        } else if (val === 0) {
+          imgData.data[flippedIdx] = 240;
+          imgData.data[flippedIdx + 1] = 240;
+          imgData.data[flippedIdx + 2] = 245;
+          imgData.data[flippedIdx + 3] = 255;
+        } else {
+          if (isCostmap) {
+            if (val >= 99) {
+              imgData.data[flippedIdx] = 20; imgData.data[flippedIdx + 1] = 20; imgData.data[flippedIdx + 2] = 25;
+            } else {
+              const shade = Math.round(240 - (val / 99.0) * 170);
+              imgData.data[flippedIdx] = shade; imgData.data[flippedIdx + 1] = shade; imgData.data[flippedIdx + 2] = shade;
+            }
+          } else {
+            imgData.data[flippedIdx] = 20; imgData.data[flippedIdx + 1] = 20; imgData.data[flippedIdx + 2] = 25;
+          }
+          imgData.data[flippedIdx + 3] = 255;
+        }
+      }
+      offCtx.putImageData(imgData, 0, 0);
+      return offCanvas;
+    }
+
+    function toggleMapLayer() {
+      activeMapLayer = activeMapLayer === 'slam' ? 'costmap' : 'slam';
+      layerLabel.textContent = activeMapLayer.toUpperCase();
+      renderScene();
+    }
+
+    function toggleGoalMode() {
+      isGoalMode = !isGoalMode;
+      btnNavGoal.classList.toggle('active', isGoalMode);
+      canvas.classList.toggle('setting-goal', isGoalMode);
+    }
+
+    function worldToCanvas(wx, wy) {
+      const px = (wx - mapRenderTransform.originX) / mapRenderTransform.res;
+      const py = mapRenderTransform.height - ((wy - mapRenderTransform.originY) / mapRenderTransform.res);
+      return { x: px, y: py };
+    }
+
+    function canvasToWorld(cx, cy) {
+      const mapPx = (cx - mapRenderTransform.offsetX) / mapRenderTransform.scale;
+      const mapPy = (cy - mapRenderTransform.offsetY) / mapRenderTransform.scale;
+      const wx = mapPx * mapRenderTransform.res + mapRenderTransform.originX;
+      const wy = (mapRenderTransform.height - mapPy) * mapRenderTransform.res + mapRenderTransform.originY;
+      return { x: wx, y: wy };
+    }
+
+    function renderScene() {
+      const currentMsg = activeMapLayer === 'slam' ? slamMapMsg : (costmapMsg || slamMapMsg);
+      const currentOffscreen = activeMapLayer === 'slam' ? slamOffscreen : (costmapOffscreen || slamOffscreen);
+      if (!currentMsg || !currentOffscreen) return;
+
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const info = currentMsg.info;
+      const scale = Math.min(canvas.width / info.width, canvas.height / info.height) * 0.95;
+      const offsetX = (canvas.width - info.width * scale) / 2;
+      const offsetY = (canvas.height - info.height * scale) / 2;
+
+      mapRenderTransform = {
+        scale: scale, offsetX: offsetX, offsetY: offsetY,
+        width: info.width, height: info.height, res: info.resolution,
+        originX: info.origin.position.x, originY: info.origin.position.y
+      };
+
+      ctx.save();
+      ctx.translate(offsetX, offsetY);
+      ctx.scale(scale, scale);
+
+      ctx.drawImage(currentOffscreen, 0, 0);
+
+      if (currentPath.length > 1) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.5 / scale;
+        const start = worldToCanvas(currentPath[0].x, currentPath[0].y);
+        ctx.moveTo(start.x, start.y);
+        for (let i = 1; i < currentPath.length; i++) {
+          const pt = worldToCanvas(currentPath[i].x, currentPath[i].y);
+          ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+      }
+
+      const rPos = worldToCanvas(robotPose.x, robotPose.y);
+      ctx.save();
+      ctx.translate(rPos.x, rPos.y);
+      ctx.rotate(-robotPose.yaw);
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      const arrowSize = 6 / scale;
+      ctx.moveTo(arrowSize * 1.5, 0);
+      ctx.lineTo(-arrowSize, -arrowSize);
+      ctx.lineTo(-arrowSize, arrowSize);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      if (targetGoalPose) {
+        const gPos = worldToCanvas(targetGoalPose.x, targetGoalPose.y);
+        ctx.save();
+        ctx.translate(gPos.x, gPos.y);
+        ctx.rotate(-targetGoalPose.yaw);
+        ctx.strokeStyle = '#22c55e';
+        ctx.fillStyle = '#22c55e';
+        ctx.lineWidth = 2.0 / scale;
+        ctx.beginPath();
+        ctx.arc(0, 0, 4 / scale, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(12 / scale, 0);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (goalDragStart && goalDragCurrent) {
+        const p1 = worldToCanvas(goalDragStart.x, goalDragStart.y);
+        const p2 = worldToCanvas(goalDragCurrent.x, goalDragCurrent.y);
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2.0 / scale;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (!isGoalMode) return;
+      canvas.setPointerCapture(e.pointerId);
+      const rect = canvas.getBoundingClientRect();
+      goalDragStart = canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      goalDragCurrent = { ...goalDragStart };
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!isGoalMode || !goalDragStart) return;
+      const rect = canvas.getBoundingClientRect();
+      goalDragCurrent = canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      renderScene();
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (!isGoalMode || !goalDragStart) return;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+      const dx = goalDragCurrent.x - goalDragStart.x;
+      const dy = goalDragCurrent.y - goalDragStart.y;
+      let yaw = Math.hypot(dx, dy) > 0.05 ? Math.atan2(dy, dx) : 0.0;
+      targetGoalPose = { x: goalDragStart.x, y: goalDragStart.y, yaw: yaw };
+      publishNavGoal(targetGoalPose.x, targetGoalPose.y, yaw);
+      goalDragStart = null;
+      goalDragCurrent = null;
+      toggleGoalMode();
+      renderScene();
+    });
+
+    function publishNavGoal(x, y, yaw) {
+      goalPub.publish(new ROSLIB.Message({
+        header: { stamp: { sec: Math.floor(Date.now() / 1000), nanosec: 0 }, frame_id: 'map' },
+        pose: {
+          position: { x: parseFloat(x), y: parseFloat(y), z: 0.0 },
+          orientation: { x: 0.0, y: 0.0, z: Math.sin(yaw / 2.0), w: Math.cos(yaw / 2.0) }
+        }
+      }));
+    }
+
+    // Teleoperation & Joystick Logic
+    let isManualMode = true;
+    let buttonXState = 0;
+    let targetAxisLinear = 0.0;
+    let targetAxisAngular = 0.0;
+    let isDragging = false;
+    const MAX_LINEAR_SCALE = 0.60;
+    const MAX_ANGULAR_SCALE = 0.50;
+    const DEADZONE = 0.08;
+
+    function publishJoy() {
+      joyPub.publish(new ROSLIB.Message({
+        header: { stamp: { sec: 0, nanosec: 0 }, frame_id: '' },
+        axes: [parseFloat(targetAxisAngular.toFixed(3)), parseFloat(targetAxisLinear.toFixed(3))],
+        buttons: [parseInt(buttonXState)]
+      }));
+    }
+
+    function toggleMode() {
+      isManualMode = !isManualMode;
+      modeBadge.textContent = isManualMode ? 'MANUAL' : 'NAV2 / AUTO';
+      modeBadge.className = isManualMode ? 'indicator mode-manual' : 'indicator mode-nav2';
+      buttonXState = 1;
+      publishJoy();
+      setTimeout(() => { buttonXState = 0; publishJoy(); }, 100);
+    }
+
+    function emergencyStop() {
+      isDragging = false;
+      targetAxisLinear = 0.0;
+      targetAxisAngular = 0.0;
+      handle.style.transform = 'translate(0px, 0px)';
+      publishJoy();
+    }
+
+    const container = document.getElementById('joystick-container');
+    const handle = document.getElementById('joystick-handle');
+    const maxRadius = 55;
+
+    function updateJoystickPosition(e) {
+      if (!isDragging) return;
+      const rect = container.getBoundingClientRect();
+      let dx = e.clientX - (rect.left + rect.width / 2);
+      let dy = e.clientY - (rect.top + rect.height / 2);
+      const distance = Math.hypot(dx, dy);
+
+      if (distance > maxRadius) {
+        dx = (dx / distance) * maxRadius;
+        dy = (dy / distance) * maxRadius;
+      }
+      handle.style.transform = `translate(${dx}px, ${dy}px)`;
+
+      let rawLin = -dy / maxRadius;
+      let rawAng = -dx / maxRadius;
+      targetAxisLinear = Math.abs(rawLin) < DEADZONE ? 0.0 : rawLin * MAX_LINEAR_SCALE;
+      targetAxisAngular = Math.abs(rawAng) < DEADZONE ? 0.0 : rawAng * MAX_ANGULAR_SCALE;
+    }
+
+    container.addEventListener('pointerdown', (e) => {
+      isDragging = true;
+      container.setPointerCapture(e.pointerId);
+      updateJoystickPosition(e);
+      publishJoy();
+    });
+    container.addEventListener('pointermove', updateJoystickPosition);
+
+    function stopJoystick(e) {
+      if (!isDragging) return;
+      isDragging = false;
+      try { container.releasePointerCapture(e.pointerId); } catch (_) {}
+      handle.style.transform = 'translate(0px, 0px)';
+      targetAxisLinear = 0.0;
+      targetAxisAngular = 0.0;
+      publishJoy();
+    }
+    container.addEventListener('pointerup', stopJoystick);
+    container.addEventListener('pointercancel', stopJoystick);
+
+    setInterval(() => {
+      if (isDragging || targetAxisLinear !== 0.0 || targetAxisAngular !== 0.0) {
+        publishJoy();
+      }
+    }, 50);
+  </script>
+</body>
+</html>
