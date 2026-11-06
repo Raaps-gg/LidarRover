@@ -332,6 +332,45 @@
       background: #0b0c10;
     }
 
+    /* YOLO status below the existing camera video; no changes to rover controls. */
+    .detection-summary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 16px;
+      padding: 12px 14px;
+      border-top: 1px solid #35384d;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+    }
+    .detection-summary strong { color: #f3f4f6; }
+    .detection-badge {
+      display: inline-block;
+      padding: 5px 9px;
+      border-radius: 7px;
+      font-size: 0.73rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .detection-badge.offline { background: #374151; color: #d1d5db; }
+    .detection-badge.no-person { background: #064e3b; color: #6ee7b7; }
+    .detection-badge.person { background: #7f1d1d; color: #fca5a5; }
+    .detection-items {
+      padding: 0 14px 12px;
+      color: #9ca3af;
+      font-size: 0.77rem;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+    .detection-items .object-tag {
+      display: inline-block;
+      margin: 4px 6px 0 0;
+      padding: 3px 7px;
+      background: #252839;
+      border: 1px solid #35384d;
+      border-radius: 6px;
+      color: #e5e7eb;
+    }
   </style>
 </head>
 <body>
@@ -495,6 +534,12 @@
         </div>
         <img id="camera-feed"
              alt="Live Logitech C922 object detection feed">
+        <div class="detection-summary">
+          <span id="detection-health" class="detection-badge offline" role="status">WAITING FOR CAMERA</span>
+          <span>Objects: <strong id="detection-count">--</strong></span>
+          <span>Inference: <strong id="detection-fps">--</strong> FPS</span>
+        </div>
+        <div id="detection-items" class="detection-items">Waiting for YOLO results...</div>
       </div>
     </div>
   </div>
@@ -505,6 +550,79 @@
     document.getElementById("camera-feed").src =
       `http://${window.location.hostname}:5000/video_feed`;
 
+
+    // Read-only camera status from Flask. ROSBridge and motor controls are not required.
+    const cameraStatusUrl = `${window.location.protocol}//${window.location.hostname}:5000/status`;
+    const detectionHealthEl = document.getElementById('detection-health');
+    const detectionCountEl = document.getElementById('detection-count');
+    const detectionFpsEl = document.getElementById('detection-fps');
+    const detectionItemsEl = document.getElementById('detection-items');
+    let detectionFetchActive = false;
+
+    function cameraUnavailable(message) {
+      detectionHealthEl.textContent = 'CAMERA OFFLINE';
+      detectionHealthEl.className = 'detection-badge offline';
+      detectionCountEl.textContent = '--';
+      detectionFpsEl.textContent = '--';
+      detectionItemsEl.textContent = message;
+    }
+
+    async function refreshCameraStatus() {
+      if (detectionFetchActive) return;
+      detectionFetchActive = true;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1800);
+      try {
+        const response = await fetch(cameraStatusUrl, {
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.camera_online !== true) {
+          cameraUnavailable('No recent camera frames. Check the YOLO camera server.');
+          return;
+        }
+
+        const objects = Array.isArray(data.objects) ? data.objects : [];
+        const detectedPerson = data.person_detected === true;
+        detectionHealthEl.textContent = detectedPerson ? 'PERSON DETECTED' : 'NO PERSON DETECTED';
+        detectionHealthEl.className = detectedPerson
+          ? 'detection-badge person'
+          : 'detection-badge no-person';
+        detectionCountEl.textContent = String(objects.length);
+        detectionFpsEl.textContent = Number.isFinite(Number(data.fps))
+          ? Number(data.fps).toFixed(1)
+          : '--';
+
+        detectionItemsEl.replaceChildren();
+        if (!objects.length) {
+          detectionItemsEl.textContent = 'No objects detected in the current frame.';
+          return;
+        }
+        for (const obj of objects.slice(0, 12)) {
+          const chip = document.createElement('span');
+          chip.className = 'object-tag';
+          const label = typeof obj.class === 'string' ? obj.class : 'object';
+          const confidence = Number(obj.confidence);
+          chip.textContent = `${label} ${Number.isFinite(confidence)
+            ? (confidence * 100).toFixed(0) + '%'
+            : ''}`.trim();
+          detectionItemsEl.appendChild(chip);
+        }
+        if (objects.length > 12) {
+          detectionItemsEl.appendChild(document.createTextNode(` +${objects.length - 12} more`));
+        }
+      } catch (error) {
+        cameraUnavailable('Cannot read camera status. Check port 5000 and Flask CORS settings.');
+      } finally {
+        clearTimeout(timeout);
+        detectionFetchActive = false;
+      }
+    }
+
+    refreshCameraStatus();
+    setInterval(refreshCameraStatus, 1000);
 
     // Tab Controller for htop
     let activeHtopTab = 'main';

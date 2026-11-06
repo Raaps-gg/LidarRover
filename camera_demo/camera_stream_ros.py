@@ -4,11 +4,29 @@ import threading
 import rclpy
 
 from flask import Flask, Response, jsonify
+from flask import request
+from urllib.parse import urlsplit
 from ultralytics import YOLO
 from std_msgs.msg import Bool
 from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose
 
 app = Flask(__name__)
+
+@app.after_request
+def allow_dashboard_to_read_camera_status(response):
+    if request.path == '/status':
+        origin = request.headers.get('Origin', '')
+        try:
+            source = urlsplit(origin)
+            api_host = request.host.split(':')[0].lower()
+            if (source.scheme == 'http' and source.hostname == api_host
+                    and source.port == 8080):
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Vary'] = 'Origin'
+        except ValueError:
+            pass
+    return response
+
 
 MODEL_PATH = "/home/lidarrover/yolo26n.pt"
 CAMERA_INDEX = 0
