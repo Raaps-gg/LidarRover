@@ -7,6 +7,7 @@ from geometry_msgs.msg import Twist, TransformStamped
 from nav_msgs.msg import Odometry
 from tf2_ros import TransformBroadcaster
 from std_msgs.msg import Bool, String
+from vision_msgs.msg import Detection2DArray
 
 import subprocess
 import signal
@@ -35,6 +36,16 @@ class RoverMasterNode(Node):
         self.declare_parameter('speed_linear', 0.8)     # m/s
         self.declare_parameter('speed_angular', 3.5)    # rad/s
 
+        # YOLO detection-based autonomous stop (off until deliberately enabled)
+        self.declare_parameter('dry_run', False)
+        self.declare_parameter('vision_guard_enabled', False)
+        self.declare_parameter('vision_detection_timeout_sec', 1.5)
+        self.declare_parameter('vision_image_width_px', 640.0)
+        self.declare_parameter('vision_zone_min_x', 0.25)
+        self.declare_parameter('vision_zone_max_x', 0.75)
+        self.declare_parameter('vision_stop_classes', ['person'])
+        self.declare_parameter('vision_min_confidence', 0.45)
+
         self.manual_mode = True
         self.prev_button_state = 0
         self.port = self.get_parameter('port').value    # using ROS2 parameter for expandability
@@ -43,13 +54,18 @@ class RoverMasterNode(Node):
         self.wheel_radius = self.get_parameter('wheel_radius').value
         self.ticks_per_rev = self.get_parameter('ticks_per_rev').value
 
-        # Open Serial to Arduino Due
-        try:
-            self.ser = serial.Serial(self.port, self.baud, timeout=0.02)
-            self.get_logger().info(f"Connected to Arduino Due on {self.port}")
-        except serial.SerialException as e:
-            self.get_logger().error(f"Failed to open {self.port}: {e}")
-            raise e
+        # Open Arduino serial only when dry-run is disabled.
+        self.dry_run = bool(self.get_parameter('dry_run').value)
+        self.ser = None
+        if self.dry_run:
+            self.get_logger().warn('DRY RUN: Arduino serial connection disabled')
+        else:
+            try:
+                self.ser = serial.Serial(self.port, self.baud, timeout=0.02)
+                self.get_logger().info(f"Connected to Arduino Due on {self.port}")
+            except serial.SerialException as e:
+                self.get_logger().error(f"Failed to open {self.port}: {e}")
+                raise e
 
         # Velocity State (Multiplexer)
         self.target_vx = 0.0
@@ -59,6 +75,12 @@ class RoverMasterNode(Node):
         self.nav_vx = 0.0
         self.nav_wz = 0.0
         self.joy_active = False
+
+        self.vision_last_frame_at = None
+        self.vision_hazard_visible = False
+        self.vision_hazard_label = ''
+        self.vision_guard_latched = False
+        self.vision_latch_reason = ''
 
         # Odometry Tracking State
         self.x = 0.0
@@ -74,6 +96,16 @@ class RoverMasterNode(Node):
         # Subscribers & Publishers
         self.joy_sub = self.create_subscription(Joy, '/joy', self.joy_callback, 10)
         self.nav_sub = self.create_subscription(Twist, '/cmd_vel', self.nav_callback, 10)
+        self.vision_sub = self.create_subscription(
+            Detection2DArray, '/camera/detections', self.vision_callback, 10
+        )
+        self.vision_reset_sub = self.create_subscription(
+            Bool, '/rover/vision_guard_reset', self.vision_reset_callback, 10
+        )
+        self.vision_status_pub = self.create_publisher(
+            String, '/rover/vision_guard_status', 10
+        )
+        self.create_timer(0.2, self.publish_vision_status)
         self.active_cmd_pub = self.create_publisher(Twist, '/rover/active_cmd_vel', 10)
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -92,6 +124,100 @@ class RoverMasterNode(Node):
         # Main loop timer (20 Hz / 50 ms)
         self.create_timer(0.05, self.control_and_serial_loop)
     
+    def vision_is_fresh(self):
+        if self.vision_last_frame_at is None:
+            return False
+        age = time.monotonic() - self.vision_last_frame_at
+        return age <= float(self.get_parameter('vision_detection_timeout_sec').value)
+
+    def latch_vision_guard(self, reason):
+        if not self.vision_guard_latched:
+            self.vision_guard_latched = True
+            self.vision_latch_reason = reason
+            self.get_logger().warn(f'Vision guard latched: {reason}')
+
+    def vision_callback(self, msg: Detection2DArray):
+        self.vision_last_frame_at = time.monotonic()
+        width = max(1.0, float(self.get_parameter('vision_image_width_px').value))
+        zone_min = float(self.get_parameter('vision_zone_min_x').value) * width
+        zone_max = float(self.get_parameter('vision_zone_max_x').value) * width
+        classes = {str(x).strip().lower() for x in self.get_parameter('vision_stop_classes').value}
+        threshold = float(self.get_parameter('vision_min_confidence').value)
+
+        visible_label = ''
+        for detection in msg.detections:
+            for result in detection.results:
+                label = str(result.hypothesis.class_id).strip().lower()
+                score = float(result.hypothesis.score)
+                center_x = float(detection.bbox.center.position.x)
+                if label in classes and score >= threshold and zone_min <= center_x <= zone_max:
+                    visible_label = label
+                    break
+            if visible_label:
+                break
+
+        self.vision_hazard_visible = bool(visible_label)
+        self.vision_hazard_label = visible_label
+        if self.vision_hazard_visible:
+            self.latch_vision_guard(f'{visible_label} detected in central camera region')
+
+    def vision_reset_callback(self, msg: Bool):
+        if not msg.data:
+            return
+        if not self.manual_mode:
+            self.get_logger().warn('Vision guard reset rejected: switch to manual mode first')
+            return
+        if not self.vision_is_fresh() or self.vision_hazard_visible:
+            self.get_logger().warn('Vision guard reset rejected: fresh, hazard-free camera data required')
+            return
+        if abs(self.target_vx) > 0.01 or abs(self.target_wz) > 0.01:
+            self.get_logger().warn('Vision guard reset rejected: joystick must be neutral')
+            return
+        self.vision_guard_latched = False
+        self.vision_latch_reason = ''
+        self.get_logger().info('Vision guard cleared by operator')
+
+    def vision_blocks_autonomous(self):
+        if not bool(self.get_parameter('vision_guard_enabled').value) or self.manual_mode:
+            return False
+        if not self.vision_is_fresh():
+            self.latch_vision_guard('camera detections missing or stale')
+        elif self.vision_hazard_visible:
+            self.latch_vision_guard('configured object in central camera region')
+        return self.vision_guard_latched
+
+    def publish_vision_status(self):
+        fresh = self.vision_is_fresh()
+        enabled = bool(self.get_parameter('vision_guard_enabled').value)
+        blocking_auto = enabled and not self.manual_mode and (
+            self.vision_guard_latched or not fresh or self.vision_hazard_visible
+        )
+        if not enabled:
+            state = 'MONITOR_ONLY'
+        elif blocking_auto:
+            state = 'AUTO_BLOCKED'
+        elif self.vision_guard_latched:
+            state = 'LATCHED_MANUAL_OVERRIDE'
+        elif not fresh:
+            state = 'CAMERA_OFFLINE_MANUAL'
+        elif self.vision_hazard_visible:
+            state = 'HAZARD_VISIBLE_MANUAL'
+        else:
+            state = 'CLEAR'
+        msg = String()
+        msg.data = json.dumps({
+            'state': state,
+            'enabled': enabled,
+            'control_mode': 'MANUAL' if self.manual_mode else 'AUTO',
+            'camera_fresh': fresh,
+            'hazard_visible': self.vision_hazard_visible if fresh else None,
+            'hazard_class': self.vision_hazard_label if fresh else None,
+            'latched': self.vision_guard_latched,
+            'latch_reason': self.vision_latch_reason,
+            'blocking_autonomous': blocking_auto
+        })
+        self.vision_status_pub.publish(msg)
+
     def explore_callback(self, msg: Bool):
         should_run = msg.data
 
@@ -254,7 +380,7 @@ class RoverMasterNode(Node):
         # Send 'c <mode>\n' to Arduino Due only on state transitions or periodically
         if active_mode != self.current_led_mode:
             self.current_led_mode = active_mode
-            if self.ser.is_open:
+            if self.ser is not None and self.ser.is_open:
                 self.ser.write(f"c {self.current_led_mode}\n".encode('utf-8'))
 
         # 1. Watchdog- nav2
@@ -271,6 +397,11 @@ class RoverMasterNode(Node):
                 self.target_vx = 0.0
                 self.target_wz = 0.0
 
+        # Apply camera-based inhibition only after the existing mode watchdogs.
+        if self.vision_blocks_autonomous():
+            self.target_vx = 0.0
+            self.target_wz = 0.0
+
         # Publish active velocity for Foxglove/visualization
         active_twist = Twist()
         active_twist.linear.x = float(self.target_vx)
@@ -278,12 +409,12 @@ class RoverMasterNode(Node):
         self.active_cmd_pub.publish(active_twist)
 
         # Transmit velocity command to Arduino Due ('v <linear_x> <angular_z>\n')
-        if self.ser.is_open:
+        if self.ser is not None and self.ser.is_open:
             cmd = f"v {self.target_vx:.3f} {self.target_wz:.3f}\n"
             self.ser.write(cmd.encode('utf-8'))
 
         # 2. Read Telemetry from Arduino Due ('e <left> <right>\n')
-        while self.ser.is_open and self.ser.in_waiting > 0:
+        while self.ser is not None and self.ser.is_open and self.ser.in_waiting > 0:
             try:
                 line = self.ser.readline().decode('utf-8').strip()
                 if not line:
@@ -368,7 +499,8 @@ def main(args=None):
                 os.killpg(os.getpgid(node.explore_proc.pid), signal.SIGTERM)
             except Exception:
                 pass
-        node.ser.close()
+        if node.ser is not None and node.ser.is_open:
+            node.ser.close()
         node.destroy_node()
         rclpy.shutdown()
 

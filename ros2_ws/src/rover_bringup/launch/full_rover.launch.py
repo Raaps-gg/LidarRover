@@ -33,6 +33,15 @@ def generate_launch_description():
         output='screen'
     )
 
+    # Person-aware speed advice for Nav2. Does not command rover motors.
+    semantic_nav2_advisor = Node(
+        package='rover_bringup',
+        executable='semantic_nav2_advisor.py',
+        name='semantic_nav2_advisor',
+        output='screen',
+        parameters=[{'enabled': False}]
+    )
+
     # 4. Static TF (base_link -> laser)
     static_tf = Node(
         package='tf2_ros',
@@ -96,6 +105,7 @@ def generate_launch_description():
         joy_node,
         rplidar_launch,
         rover_master,
+        semantic_nav2_advisor,
         static_tf,
         slam_toolbox_launch,
         foxglove_launch,

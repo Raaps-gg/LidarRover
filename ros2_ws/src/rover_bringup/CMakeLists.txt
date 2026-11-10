@@ -6,6 +6,7 @@ find_package(ament_cmake REQUIRED)
 # Install Python node into lib/rover_bringup
 install(PROGRAMS
   scripts/rover_master_node.py
+  scripts/semantic_nav2_advisor.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

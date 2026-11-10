@@ -536,6 +536,7 @@
              alt="Live Logitech C922 object detection feed">
         <div class="detection-summary">
           <span id="detection-health" class="detection-badge offline" role="status">WAITING FOR CAMERA</span>
+          <span id="vision-guard-health" class="detection-badge offline" role="status">VISION GUARD: UNAVAILABLE</span>
           <span>Objects: <strong id="detection-count">--</strong></span>
           <span>Inference: <strong id="detection-fps">--</strong> FPS</span>
         </div>
@@ -657,6 +658,54 @@
     ros.on('connection', () => { statusEl.textContent = 'Connected'; statusEl.className = 'status-badge connected'; });
     ros.on('error', () => { statusEl.textContent = 'Bridge Error'; statusEl.className = 'status-badge error'; });
     ros.on('close', () => { statusEl.textContent = 'Disconnected'; statusEl.className = 'status-badge error'; });
+
+    // Vision guard status from the active rover controller.
+    const visionGuardHealth = document.getElementById('vision-guard-health');
+    let visionGuardLastStatusAt = 0;
+    const visionGuardStatusSub = new ROSLIB.Topic({
+      ros: ros,
+      name: '/rover/vision_guard_status',
+      messageType: 'std_msgs/msg/String'
+    });
+
+    visionGuardStatusSub.subscribe((message) => {
+      visionGuardLastStatusAt = Date.now();
+      try {
+        const guard = JSON.parse(message.data);
+        if (!guard.enabled) {
+          visionGuardHealth.textContent = 'VISION GUARD: MONITOR ONLY';
+          visionGuardHealth.className = 'detection-badge offline';
+        } else if (guard.blocking_autonomous) {
+          visionGuardHealth.textContent = 'VISION GUARD: AUTO BLOCKED';
+          visionGuardHealth.className = 'detection-badge person';
+        } else if (guard.latched) {
+          visionGuardHealth.textContent = 'VISION GUARD: LATCHED (MANUAL)';
+          visionGuardHealth.className = 'detection-badge person';
+        } else if (!guard.camera_fresh) {
+          visionGuardHealth.textContent = 'VISION GUARD: CAMERA OFFLINE';
+          visionGuardHealth.className = 'detection-badge offline';
+        } else {
+          visionGuardHealth.textContent = 'VISION GUARD: CLEAR';
+          visionGuardHealth.className = 'detection-badge no-person';
+        }
+      } catch (error) {
+        visionGuardHealth.textContent = 'VISION GUARD: INVALID STATUS';
+        visionGuardHealth.className = 'detection-badge offline';
+      }
+    });
+
+    ros.on('close', () => {
+      visionGuardLastStatusAt = 0;
+      visionGuardHealth.textContent = 'VISION GUARD: UNAVAILABLE';
+      visionGuardHealth.className = 'detection-badge offline';
+    });
+
+    setInterval(() => {
+      if (Date.now() - visionGuardLastStatusAt > 2000) {
+        visionGuardHealth.textContent = 'VISION GUARD: UNAVAILABLE';
+        visionGuardHealth.className = 'detection-badge offline';
+      }
+    }, 500);
 
     // E-STOP Publisher
     const estopPub = new ROSLIB.Topic({
