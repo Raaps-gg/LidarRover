@@ -70,7 +70,7 @@
       align-items: center;
     }
 
-    /* Map Display and Toolbar */
+    /* Map Display */
     #map-wrapper {
       position: relative;
       width: 100%;
@@ -79,50 +79,81 @@
       border: 1px solid #2d303e;
       border-radius: 12px;
       overflow: hidden;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
     #map-canvas { width: 100%; height: 100%; display: block; }
     #map-canvas.setting-goal { cursor: crosshair; }
-    .map-toolbar {
-      position: absolute;
-      top: 8px;
-      right: 8px;
+
+    /* 5-Button Unified Control Panel Bar */
+    .control-panel-bar {
+      width: 100%;
       display: flex;
       gap: 6px;
-      z-index: 10;
+      margin-bottom: 12px;
+      align-items: stretch;
     }
-    .btn-tool {
-      background: rgba(30, 32, 44, 0.85);
-      backdrop-filter: blur(4px);
-      border: 1px solid #4b5563;
-      color: #f3f4f6;
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 5px 10px;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    .btn-tool.active { background: #2563eb; border-color: #3b82f6; }
-
-    /* Mode Button */
-    .mode-container { width: 100%; margin-bottom: 12px; }
-    .btn-mode {
-      width: 100%;
-      padding: 10px 14px;
-      border-radius: 10px;
+    .btn-panel {
+      flex: 1;
+      min-width: 0;
+      padding: 9px 2px;
+      border-radius: 8px;
       border: 1px solid #3b3e54;
-      font-size: 0.9rem;
-      font-weight: 700;
+      background-color: #1e202c;
+      color: #9ca3af;
+      font-size: 0.68rem;
+      font-weight: 600;
       cursor: pointer;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      background-color: #1e202c;
-      color: #f3f4f6;
+      justify-content: center;
+      gap: 3px;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+      touch-action: manipulation;
     }
-    .btn-mode .indicator { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; }
-    .mode-manual { background-color: #d97706; color: #ffffff; }
-    .mode-nav2 { background-color: #2563eb; color: #ffffff; }
+    .btn-panel:active {
+      transform: scale(0.97);
+    }
+    .btn-panel.active {
+      background-color: #2563eb;
+      border-color: #3b82f6;
+      color: #ffffff;
+    }
+    .btn-panel.btn-estop {
+      flex: 0.85;
+      background-color: #ef4444;
+      border-color: #dc2626;
+      color: #ffffff;
+      font-weight: 800;
+      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+    }
+    .btn-panel.btn-estop:active {
+      background-color: #dc2626;
+    }
+
+    /* Active Highlight States inside Toggle Buttons */
+    .active-toggle {
+      color: #38bdf8;
+      font-weight: 800;
+    }
+    .mode-active-manual {
+      color: #f59e0b;
+      font-weight: 800;
+    }
+    .mode-active-nav2 {
+      color: #38bdf8;
+      font-weight: 800;
+    }
+
+    /* Teleop Controls Area (Joystick + Vertical Velocity Panel) */
+    .teleop-row {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      margin-bottom: 8px;
+    }
 
     /* Joystick Controls */
     #joystick-container {
@@ -132,12 +163,12 @@
       background: radial-gradient(circle, #252839 0%, #171824 70%);
       border: 2px dashed #35384d;
       border-radius: 50%;
-      margin-bottom: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
       touch-action: none;
       cursor: pointer;
+      flex-shrink: 0;
     }
     #joystick-handle {
       width: 60px;
@@ -165,20 +196,17 @@
     .metric-label { font-size: 0.7rem; color: #9ca3af; margin-bottom: 2px; }
     .metric-value { font-size: 1.1rem; font-weight: 700; font-family: monospace; color: #38bdf8; }
 
-    .controls { width: 100%; display: flex; margin-bottom: 6px; }
-    button.btn-estop {
-      width: 100%;
-      padding: 12px;
-      border: none;
-      border-radius: 10px;
-      font-size: 0.9rem;
-      font-weight: 700;
-      cursor: pointer;
-      background-color: #ef4444;
-      color: #ffffff;
-      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+    /* Vertical Velocity Telemetry Panel */
+    .telemetry-card.velocity-vertical {
+      width: auto;
+      min-width: 110px;
+      flex-direction: column;
+      justify-content: center;
+      gap: 14px;
+      padding: 14px 16px;
+      margin-bottom: 0;
+      height: 170px;
     }
-    button.btn-estop:active { transform: scale(0.98); }
 
     /* Right Column: htop Terminal Window */
     .htop-container {
@@ -280,6 +308,69 @@
     }
     table.htop-table tr:hover { background: #1a1c29; }
     .cmd-col { color: #38bdf8; font-weight: 500; }
+
+    /* Logitech C922 Object Detection */
+    .camera-panel {
+      width: 100%;
+      margin-top: 12px;
+      background: #171824;
+      border: 1px solid #35384d;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .camera-panel-header {
+      padding: 12px 14px;
+      color: #f3f4f6;
+      font-size: 0.85rem;
+      font-weight: 700;
+      border-bottom: 1px solid #35384d;
+    }
+    .camera-panel img {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #0b0c10;
+    }
+
+    /* YOLO status below the existing camera video; no changes to rover controls. */
+    .detection-summary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 16px;
+      padding: 12px 14px;
+      border-top: 1px solid #35384d;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+    }
+    .detection-summary strong { color: #f3f4f6; }
+    .detection-badge {
+      display: inline-block;
+      padding: 5px 9px;
+      border-radius: 7px;
+      font-size: 0.73rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .detection-badge.offline { background: #374151; color: #d1d5db; }
+    .detection-badge.no-person { background: #064e3b; color: #6ee7b7; }
+    .detection-badge.person { background: #7f1d1d; color: #fca5a5; }
+    .detection-items {
+      padding: 0 14px 12px;
+      color: #9ca3af;
+      font-size: 0.77rem;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+    .detection-items .object-tag {
+      display: inline-block;
+      margin: 4px 6px 0 0;
+      padding: 3px 7px;
+      background: #252839;
+      border: 1px solid #35384d;
+      border-radius: 6px;
+      color: #e5e7eb;
+    }
   </style>
 </head>
 <body>
@@ -290,40 +381,55 @@
   </header>
 
   <div class="dashboard-grid">
-    <!-- LEFT COLUMN: Map, Mode, & Driving Joystick -->
+    <!-- LEFT COLUMN: Map, Unified Control Panel, Joystick, & Velocity Panel -->
     <div class="col-left">
       <!-- 1. Interactive Map -->
       <div id="map-wrapper">
-        <div class="map-toolbar">
-          <button id="btn-toggle-layer" class="btn-tool" onclick="toggleMapLayer()">
-            Layer: <span id="layer-label">SLAM</span>
-          </button>
-          <button id="btn-nav-goal" class="btn-tool" onclick="toggleGoalMode()">
-            📍 Set Goal
-          </button>
-          <!-- toggle -->
-          <button id="btn-explore" class="btn-tool" onclick="toggleExplore()">
-            🧭 Explore: OFF
-          </button>
-        </div>
         <canvas id="map-canvas"></canvas>
       </div>
 
-      <!-- 2. Mode Toggle Button -->
-      <div class="mode-container">
-        <button class="btn-mode" onclick="toggleMode()">
-          <span>Control Mode (Simulate 'X')</span>
-          <span id="mode-badge" class="indicator mode-manual">MANUAL</span>
+      <!-- 2. 5-Button Unified Control Panel Bar -->
+      <div class="control-panel-bar">
+        <button id="btn-toggle-layer" class="btn-panel" onclick="toggleMapLayer()">
+          <span id="layer-label"><span class="active-toggle">SLAM</span> ⇄ Costmap</span>
+        </button>
+        <button id="btn-nav-goal" class="btn-panel" onclick="toggleGoalMode()">
+          Set Goal
+        </button>
+        <button id="btn-explore" class="btn-panel" onclick="toggleExplore()">
+          Start Explore
+        </button>
+        <button id="btn-mode" class="btn-panel" onclick="toggleMode()">
+          <span id="mode-label"><span class="mode-active-manual">Manual</span> ⇄ Nav2</span>
+        </button>
+        <button id="btn-estop" class="btn-panel btn-estop" onclick="emergencyStop()">
+          E-STOP
         </button>
       </div>
 
-      <!-- 3. Virtual Joystick -->
-      <div id="joystick-container">
-        <div id="joystick-handle"></div>
+      <!-- 3. Teleop Controls: Joystick + Vertical Velocity Panel -->
+      <div class="teleop-row">
+        <div id="joystick-container">
+          <div id="joystick-handle"></div>
+        </div>
+
+        <div class="telemetry-card velocity-vertical">
+          <div class="metric">
+            <span class="metric-label">Linear X</span>
+            <span id="val-linear" class="metric-value">0.00</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Angular Z</span>
+            <span id="val-angular" class="metric-value">0.00</span>
+          </div>
+        </div>
       </div>
+
+
+
     </div>
 
-    <!-- RIGHT COLUMN: System Health, Velocity Metrics, & E-STOP -->
+    <!-- RIGHT COLUMN: System Health & htop Terminal Window -->
     <div class="col-right">
       <!-- 1. System Summary Card -->
       <div class="telemetry-card">
@@ -421,26 +527,104 @@
         </div>
       </div>
 
-      <!-- 3. Velocity Metrics Panel -->
-      <div class="telemetry-card">
-        <div class="metric">
-          <span class="metric-label">Linear X (m/s)</span>
-          <span id="val-linear" class="metric-value">0.00</span>
+      <!-- Logitech C922 Live Object Detection -->
+      <div class="camera-panel">
+        <div class="camera-panel-header">
+          Live Object Detection | Logitech C922 + YOLO
         </div>
-        <div class="metric">
-          <span class="metric-label">Angular Z (rad/s)</span>
-          <span id="val-angular" class="metric-value">0.00</span>
+        <img id="camera-feed"
+             alt="Live Logitech C922 object detection feed">
+        <div class="detection-summary">
+          <span id="detection-health" class="detection-badge offline" role="status">WAITING FOR CAMERA</span>
+          <span id="vision-guard-health" class="detection-badge offline" role="status">VISION GUARD: UNAVAILABLE</span>
+          <span>Objects: <strong id="detection-count">--</strong></span>
+          <span>Inference: <strong id="detection-fps">--</strong> FPS</span>
         </div>
-      </div>
-
-      <!-- 4. Emergency Stop Button -->
-      <div class="controls">
-        <button class="btn-estop" onclick="emergencyStop()">E-STOP</button>
+        <div id="detection-items" class="detection-items">Waiting for YOLO results...</div>
       </div>
     </div>
   </div>
 
   <script>
+
+    // Connect Logitech camera feed
+    document.getElementById("camera-feed").src =
+      `http://${window.location.hostname}:5000/video_feed`;
+
+
+    // Read-only camera status from Flask. ROSBridge and motor controls are not required.
+    const cameraStatusUrl = `${window.location.protocol}//${window.location.hostname}:5000/status`;
+    const detectionHealthEl = document.getElementById('detection-health');
+    const detectionCountEl = document.getElementById('detection-count');
+    const detectionFpsEl = document.getElementById('detection-fps');
+    const detectionItemsEl = document.getElementById('detection-items');
+    let detectionFetchActive = false;
+
+    function cameraUnavailable(message) {
+      detectionHealthEl.textContent = 'CAMERA OFFLINE';
+      detectionHealthEl.className = 'detection-badge offline';
+      detectionCountEl.textContent = '--';
+      detectionFpsEl.textContent = '--';
+      detectionItemsEl.textContent = message;
+    }
+
+    async function refreshCameraStatus() {
+      if (detectionFetchActive) return;
+      detectionFetchActive = true;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1800);
+      try {
+        const response = await fetch(cameraStatusUrl, {
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (data.camera_online !== true) {
+          cameraUnavailable('No recent camera frames. Check the YOLO camera server.');
+          return;
+        }
+
+        const objects = Array.isArray(data.objects) ? data.objects : [];
+        const detectedPerson = data.person_detected === true;
+        detectionHealthEl.textContent = detectedPerson ? 'PERSON DETECTED' : 'NO PERSON DETECTED';
+        detectionHealthEl.className = detectedPerson
+          ? 'detection-badge person'
+          : 'detection-badge no-person';
+        detectionCountEl.textContent = String(objects.length);
+        detectionFpsEl.textContent = Number.isFinite(Number(data.fps))
+          ? Number(data.fps).toFixed(1)
+          : '--';
+
+        detectionItemsEl.replaceChildren();
+        if (!objects.length) {
+          detectionItemsEl.textContent = 'No objects detected in the current frame.';
+          return;
+        }
+        for (const obj of objects.slice(0, 12)) {
+          const chip = document.createElement('span');
+          chip.className = 'object-tag';
+          const label = typeof obj.class === 'string' ? obj.class : 'object';
+          const confidence = Number(obj.confidence);
+          chip.textContent = `${label} ${Number.isFinite(confidence)
+            ? (confidence * 100).toFixed(0) + '%'
+            : ''}`.trim();
+          detectionItemsEl.appendChild(chip);
+        }
+        if (objects.length > 12) {
+          detectionItemsEl.appendChild(document.createTextNode(` +${objects.length - 12} more`));
+        }
+      } catch (error) {
+        cameraUnavailable('Cannot read camera status. Check port 5000 and Flask CORS settings.');
+      } finally {
+        clearTimeout(timeout);
+        detectionFetchActive = false;
+      }
+    }
+
+    refreshCameraStatus();
+    setInterval(refreshCameraStatus, 1000);
+
     // Tab Controller for htop
     let activeHtopTab = 'main';
     function switchHtopTab(tab) {
@@ -456,10 +640,10 @@
     const ros = new ROSLIB.Ros({ url: `ws://${bridgeHost}:9090` });
 
     const statusEl = document.getElementById('status');
-    const modeBadge = document.getElementById('mode-badge');
     const linearEl = document.getElementById('val-linear');
     const angularEl = document.getElementById('val-angular');
     const layerLabel = document.getElementById('layer-label');
+    const modeLabel = document.getElementById('mode-label');
     const btnNavGoal = document.getElementById('btn-nav-goal');
     const canvas = document.getElementById('map-canvas');
     const ctx = canvas.getContext('2d');
@@ -474,6 +658,61 @@
     ros.on('connection', () => { statusEl.textContent = 'Connected'; statusEl.className = 'status-badge connected'; });
     ros.on('error', () => { statusEl.textContent = 'Bridge Error'; statusEl.className = 'status-badge error'; });
     ros.on('close', () => { statusEl.textContent = 'Disconnected'; statusEl.className = 'status-badge error'; });
+
+    // Vision guard status from the active rover controller.
+    const visionGuardHealth = document.getElementById('vision-guard-health');
+    let visionGuardLastStatusAt = 0;
+    const visionGuardStatusSub = new ROSLIB.Topic({
+      ros: ros,
+      name: '/rover/vision_guard_status',
+      messageType: 'std_msgs/msg/String'
+    });
+
+    visionGuardStatusSub.subscribe((message) => {
+      visionGuardLastStatusAt = Date.now();
+      try {
+        const guard = JSON.parse(message.data);
+        if (!guard.enabled) {
+          visionGuardHealth.textContent = 'VISION GUARD: MONITOR ONLY';
+          visionGuardHealth.className = 'detection-badge offline';
+        } else if (guard.blocking_autonomous) {
+          visionGuardHealth.textContent = 'VISION GUARD: AUTO BLOCKED';
+          visionGuardHealth.className = 'detection-badge person';
+        } else if (guard.latched) {
+          visionGuardHealth.textContent = 'VISION GUARD: LATCHED (MANUAL)';
+          visionGuardHealth.className = 'detection-badge person';
+        } else if (!guard.camera_fresh) {
+          visionGuardHealth.textContent = 'VISION GUARD: CAMERA OFFLINE';
+          visionGuardHealth.className = 'detection-badge offline';
+        } else {
+          visionGuardHealth.textContent = 'VISION GUARD: CLEAR';
+          visionGuardHealth.className = 'detection-badge no-person';
+        }
+      } catch (error) {
+        visionGuardHealth.textContent = 'VISION GUARD: INVALID STATUS';
+        visionGuardHealth.className = 'detection-badge offline';
+      }
+    });
+
+    ros.on('close', () => {
+      visionGuardLastStatusAt = 0;
+      visionGuardHealth.textContent = 'VISION GUARD: UNAVAILABLE';
+      visionGuardHealth.className = 'detection-badge offline';
+    });
+
+    setInterval(() => {
+      if (Date.now() - visionGuardLastStatusAt > 2000) {
+        visionGuardHealth.textContent = 'VISION GUARD: UNAVAILABLE';
+        visionGuardHealth.className = 'detection-badge offline';
+      }
+    }, 500);
+
+    // E-STOP Publisher
+    const estopPub = new ROSLIB.Topic({
+      ros: ros,
+      name: '/rover/estop',
+      messageType: 'std_msgs/msg/Bool'
+    });
 
     // Explore-Lite ROS Topics & Controller Logic
     let isExploring = false;
@@ -493,7 +732,7 @@
 
     exploreStatusSub.subscribe((msg) => {
       isExploring = msg.data;
-      btnExplore.textContent = isExploring ? '🧭 Explore: ON' : '🧭 Explore: OFF';
+      btnExplore.textContent = isExploring ? 'Stop Explore' : 'Start Explore';
       btnExplore.classList.toggle('active', isExploring);
     });
 
@@ -683,7 +922,9 @@
 
     function toggleMapLayer() {
       activeMapLayer = activeMapLayer === 'slam' ? 'costmap' : 'slam';
-      layerLabel.textContent = activeMapLayer.toUpperCase();
+      layerLabel.innerHTML = activeMapLayer === 'slam'
+        ? '<span class="active-toggle">SLAM</span> ⇄ Costmap'
+        : 'SLAM ⇄ <span class="active-toggle">Costmap</span>';
       renderScene();
     }
 
@@ -849,21 +1090,36 @@
       }));
     }
 
+    function updateModeDisplay() {
+      if (modeLabel) {
+        modeLabel.innerHTML = isManualMode
+          ? '<span class="mode-active-manual">Manual</span> ⇄ Nav2'
+          : 'Manual ⇄ <span class="mode-active-nav2">Nav2</span>';
+      }
+    }
+
     function toggleMode() {
       isManualMode = !isManualMode;
-      modeBadge.textContent = isManualMode ? 'MANUAL' : 'NAV2 / AUTO';
-      modeBadge.className = isManualMode ? 'indicator mode-manual' : 'indicator mode-nav2';
+      updateModeDisplay();
       buttonXState = 1;
       publishJoy();
       setTimeout(() => { buttonXState = 0; publishJoy(); }, 100);
     }
 
     function emergencyStop() {
+      // 1. Joystick reset
       isDragging = false;
       targetAxisLinear = 0.0;
       targetAxisAngular = 0.0;
       handle.style.transform = 'translate(0px, 0px)';
       publishJoy();
+
+      // 2. Web UI mode switch
+      isManualMode = true;
+      updateModeDisplay();
+
+      // 3. Publish to ROS 2 E-STOP topic
+      estopPub.publish(new ROSLIB.Message({ data: true }));
     }
 
     const container = document.getElementById('joystick-container');
